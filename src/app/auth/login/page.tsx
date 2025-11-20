@@ -1,58 +1,197 @@
-import Link from "next/link";
-import { createSupabaseClient } from "@/lib/supabase/client";
-import { redirect } from "next/navigation";
+"use client";
 
-export default async function LoginPage() {
+import { createSupabaseClient } from "@/lib/supabase/client";
+import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+
+export default function LoginPage() {
+  const router = useRouter();
   const supabase = createSupabaseClient();
+  
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
 
   // Check if already logged in
-  try {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (user) {
-      redirect("/chat");
+  useEffect(() => {
+    const checkUser = async () => {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (user) {
+          router.push("/chat");
+        }
+      } catch (error) {
+        console.log("User check error");
+      }
+    };
+    checkUser();
+  }, [router]);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        setError(error.message);
+        return;
+      }
+
+      if (data?.user) {
+        router.push("/chat");
+      }
+    } catch (err) {
+      setError("An error occurred during login");
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
-  } catch (error) {
-    console.log("User check error (expected if not logged in)");
-  }
+  };
+
+  const handleSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setSuccessMessage("");
+    setLoading(true);
+
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+
+      if (error) {
+        setError(error.message);
+        return;
+      }
+
+      if (data?.user) {
+        setSuccessMessage(
+          "Sign up successful! Please log in with your credentials."
+        );
+        setIsSignUp(false);
+        setEmail("");
+        setPassword("");
+      }
+    } catch (err) {
+      setError("An error occurred during sign up");
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    if (isSignUp) {
+      handleSignUp(e);
+    } else {
+      handleLogin(e);
+    }
+  };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <div className="bg-white p-8 rounded-lg shadow-xl max-w-md w-full">
         <h1 className="text-3xl font-bold text-gray-800 mb-2">Property ChatBot</h1>
         <p className="text-gray-600 mb-8">
           Ask questions about properties using natural language
         </p>
 
-        <div className="space-y-4">
-          <p className="text-center text-gray-600 mb-6">
-            Configure your Supabase authentication to enable login.
-          </p>
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded p-3 text-sm text-red-800 mb-4">
+            {error}
+          </div>
+        )}
 
-          <div className="bg-blue-50 border border-blue-200 rounded p-4 text-sm text-blue-800">
-            <p className="font-semibold mb-2">Setup Required:</p>
-            <ol className="list-decimal list-inside space-y-1">
-              <li>Add Supabase credentials to .env.local</li>
-              <li>Configure Auth providers in Supabase console</li>
-              <li>Restart the development server</li>
-            </ol>
+        {successMessage && (
+          <div className="bg-green-50 border border-green-200 rounded p-3 text-sm text-green-800 mb-4">
+            {successMessage}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Email
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              required
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            />
           </div>
 
-          <Link
-            href="/chat"
-            className="w-full bg-indigo-600 text-white py-2 px-4 rounded-lg hover:bg-indigo-700 transition text-center block"
-          >
-            Continue as Guest
-          </Link>
-        </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Password
+            </label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              required
+              minLength={6}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            />
+          </div>
 
-        <div className="mt-6 pt-6 border-t text-center text-sm text-gray-600">
-          <p>
-            For development, you can{" "}
-            <span className="text-indigo-600 font-semibold">skip login</span> and
-            explore the chatbot.
-          </p>
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-indigo-600 text-white py-2 px-4 rounded-lg hover:bg-indigo-700 transition disabled:opacity-50"
+          >
+            {loading ? "Loading..." : isSignUp ? "Sign Up" : "Login"}
+          </button>
+        </form>
+
+        <div className="mt-4 text-center text-sm">
+          {isSignUp ? (
+            <>
+              Already have an account?{" "}
+              <button
+                onClick={() => {
+                  setIsSignUp(false);
+                  setError("");
+                  setSuccessMessage("");
+                }}
+                className="text-indigo-600 hover:underline"
+              >
+                Log in
+              </button>
+            </>
+          ) : (
+            <>
+              Don&apos;t have an account?{" "}
+              <button
+                onClick={() => {
+                  setIsSignUp(true);
+                  setError("");
+                  setSuccessMessage("");
+                }}
+                className="text-indigo-600 hover:underline"
+              >
+                Sign up
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
