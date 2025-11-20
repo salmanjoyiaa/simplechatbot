@@ -74,7 +74,7 @@ export default function ChatPage() {
     }
   }, [user?.id]);
 
-  // Initialize
+  // Initialize - Require authentication
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const initUser = async () => {
@@ -83,20 +83,21 @@ export default function ChatPage() {
           data: { user },
         } = await supabase.auth.getUser();
         
-        if (user) {
-          setUser(user);
-        } else {
-          // Allow guest mode - create a temporary user session
-          setUser({ id: "guest-" + Date.now(), email: "guest@example.com" });
+        if (!user) {
+          // Redirect to login if not authenticated
+          router.push("/auth/login");
+          return;
         }
+        
+        setUser(user);
       } catch (error) {
-        console.log("Auth check error");
-        setUser({ id: "guest-" + Date.now(), email: "guest@example.com" });
+        console.error("Auth error:", error);
+        router.push("/auth/login");
       }
     };
 
     initUser();
-  }, []);
+  }, [router]);
 
   const createNewConversation = async () => {
     if (!user) return;

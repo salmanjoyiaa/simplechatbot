@@ -12,49 +12,38 @@ import {
 
 export async function POST(request: NextRequest) {
   try {
-    // Parse request body
-    const { message, conversationId, offset = 0, guestId } = await request.json();
+    // Get authenticated user - REQUIRED
+    const supabase = createSupabaseServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-    if (!message) {
+    if (!user) {
       return NextResponse.json(
-        { error: "Missing message" },
+        { error: "Unauthorized - Please log in" },
+        { status: 401 }
+      );
+    }
+
+    // Parse request body
+    const { message, conversationId, offset = 0 } = await request.json();
+
+    if (!message || !conversationId) {
+      return NextResponse.json(
+        { error: "Missing message or conversationId" },
         { status: 400 }
       );
     }
 
-    // Get user session or allow guest mode
-    const supabase = createSupabaseServerClient();
-    let user: any = null;
-    let userId: string = guestId || "guest-test-" + Date.now();
+    // Save user message to database
+    const { error: messageError } = await supabase.from("messages").insert({
+      conversation_id: conversationId,
+      role: "user",
+      content: message,
+    });
 
-    try {
-      const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser();
-      if (authUser) {
-        user = authUser;
-        userId = authUser.id;
-      }
-    } catch {
-      // Allow guest mode for testing
-      console.log("No authenticated user, using guest mode");
-    }
-
-    // Generate or use provided conversation ID
-    let finalConversationId = conversationId;
-    if (!finalConversationId) {
-      finalConversationId = "conv-" + Date.now() + "-" + Math.random().toString(36).substring(7);
-    }
-
-    // Save user message to database (optional - may fail if not authenticated)
-    try {
-      await supabase.from("messages").insert({
-        conversation_id: finalConversationId,
-        role: "user",
-        content: message,
-      });
-    } catch (error) {
-      console.log("Message save skipped (guest mode or auth issue)");
+    if (messageError) {
+      console.error("Error saving user message:", messageError);
     }
 
     // Get schema for context
@@ -128,33 +117,30 @@ export async function POST(request: NextRequest) {
       formattedResults = formatPropertiesTable(allResults);
     }
 
-    // Save assistant message with pagination metadata (optional - may fail if not authenticated)
-    let messageData: any = null;
-    try {
-      const { data, error: assistantError } = await supabase
-        .from("messages")
-        .insert({
-          conversation_id: finalConversationId,
-          role: "assistant",
-          content: `${responseText}\n\n${formattedResults}`.trim(),
-          metadata: {
-            intent: parsedQuery.intent,
-            full_results_data: allResults,
-            has_more: hasMore,
-            current_offset: offset,
-            total_results: allResults.length,
-          },
-        })
-        .select()
-        .single();
+    // Save assistant message with pagination metadata
+    const { error: assistantError, data: messageData } = await supabase
+      .from("messages")
+      .insert({
+        conversation_id: conversationId,
+        role: "assistant",
+        content: `${responseText}\n\n${formattedResults}`.trim(),
+        metadata: {
+          intent: parsedQuery.intent,
+          full_results_data: allResults,
+          has_more: hasMore,
+          current_offset: offset,
+          total_results: allResults.length,
+        },
+      })
+      .select()
+      .single();
 
-      if (assistantError) {
-        console.log("Message save skipped (guest mode or auth issue)");
-      } else {
-        messageData = data;
-      }
-    } catch (error) {
-      console.log("Message save skipped (guest mode or auth issue)");
+    if (assistantError) {
+      console.error("Error saving assistant message:", assistantError);
+      return NextResponse.json(
+        { error: "Error saving message" },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({
