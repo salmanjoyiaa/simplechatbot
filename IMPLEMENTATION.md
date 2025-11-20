@@ -35,10 +35,10 @@ create table if not exists properties (
   created_at timestamptz default now()
 );
 
--- Conversations table
+-- Conversations table (user_id can be string for guest users)
 create table if not exists conversations (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid references auth.users(id) not null,
+  user_id text not null,
   property_id uuid references properties(id),
   title text,
   created_at timestamptz default now(),
@@ -70,24 +70,25 @@ alter table messages enable row level security;
 create policy "Properties readable by all" on properties
   for select using (true);
 
-create policy "Conversations visible to owner" on conversations
-  for select using (auth.uid() = user_id);
+-- Allow anyone to select conversations (for guest mode)
+create policy "Conversations readable by all" on conversations
+  for select using (true);
 
-create policy "Conversations creatable by authenticated users" on conversations
-  for insert with check (auth.uid() = user_id);
+-- Allow anyone to insert conversations (for guest mode)
+create policy "Conversations creatable by all" on conversations
+  for insert with check (true);
 
+-- Allow conversation owners to update
 create policy "Conversations updatable by owner" on conversations
-  for update using (auth.uid() = user_id);
+  for update using (user_id::text = user_id::text);
 
-create policy "Messages visible to conversation owner" on messages
-  for select using (
-    exists (select 1 from conversations where id = messages.conversation_id and auth.uid() = user_id)
-  );
+-- Allow anyone to select messages
+create policy "Messages readable by all" on messages
+  for select using (true);
 
-create policy "Messages insertable by conversation owner" on messages
-  for insert with check (
-    exists (select 1 from conversations where id = messages.conversation_id and auth.uid() = user_id)
-  );
+-- Allow anyone to insert messages
+create policy "Messages insertable by all" on messages
+  for insert with check (true);
 ```
 
 ### 3. Add Sample Properties (Optional)
