@@ -1,11 +1,12 @@
 "use client";
 
 import { createSupabaseClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createSupabaseClient();
   
   const [email, setEmail] = useState("");
@@ -15,8 +16,14 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
-  // Check if already logged in
+  // Check if already logged in and handle URL params
   useEffect(() => {
+    // Check for error in URL params
+    const urlError = searchParams.get("error");
+    if (urlError) {
+      setError(decodeURIComponent(urlError));
+    }
+
     const checkUser = async () => {
       try {
         const {
@@ -30,7 +37,7 @@ export default function LoginPage() {
       }
     };
     checkUser();
-  }, [router]);
+  }, [router, searchParams]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,7 +88,7 @@ export default function LoginPage() {
 
       if (data?.user) {
         setSuccessMessage(
-          "Sign up successful! Please log in with your credentials."
+          "Sign up successful! Check your email to verify your account. Then log in with your credentials."
         );
         setIsSignUp(false);
         setEmail("");
@@ -195,5 +202,20 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    }>
+      <LoginContent />
+    </Suspense>
   );
 }
